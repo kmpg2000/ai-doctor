@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Message, UserLocation, AppStatus } from './types';
 import { chatWithDoctor } from './services/geminiService';
 
+const MAX_TURNS = 10;
+
 const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -17,6 +19,10 @@ const App: React.FC = () => {
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Calculate current turn count (user messages)
+  const userMessageCount = messages.filter(m => m.role === 'user').length;
+  const isLimitReached = userMessageCount >= MAX_TURNS;
 
   // Get user location on mount for better hospital search
   useEffect(() => {
@@ -64,7 +70,7 @@ const App: React.FC = () => {
 
   const handleSendMessage = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if ((!inputText.trim() && attachedImages.length === 0) || status === AppStatus.THINKING) return;
+    if ((!inputText.trim() && attachedImages.length === 0) || status === AppStatus.THINKING || isLimitReached) return;
 
     const userMsg: Message = {
       id: Date.now().toString(),
@@ -79,10 +85,6 @@ const App: React.FC = () => {
     setStatus(AppStatus.THINKING);
 
     try {
-      // Exclude the message we just added from history to avoid duplication in logic if we were using complex state, 
-      // but here we pass the OLD history + new message logic in service. 
-      // Actually service takes history array. Let's pass the updated history excluding the new one for "history" arg, 
-      // and new one as "newMessage".
       const currentHistory = messages; 
 
       const response = await chatWithDoctor(
@@ -153,16 +155,21 @@ const App: React.FC = () => {
         <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white shadow-lg shadow-blue-200">
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
         </div>
-        <div>
+        <div className="flex-1">
           <h1 className="font-bold text-lg text-slate-800 leading-tight">AI 総合病院</h1>
           <p className="text-xs text-slate-500">総合診療科 / 24時間対応</p>
         </div>
-        {location && (
-          <div className="ml-auto text-[10px] bg-green-100 text-green-700 px-2 py-1 rounded-full flex items-center gap-1">
-            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" /></svg>
-            位置情報ON
+        <div className="flex flex-col items-end gap-1">
+           {location && (
+            <div className="text-[10px] bg-green-100 text-green-700 px-2 py-1 rounded-full flex items-center gap-1">
+              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" /></svg>
+              位置情報ON
+            </div>
+          )}
+          <div className={`text-[10px] font-bold px-2 py-1 rounded-full border ${isLimitReached ? 'bg-red-50 text-red-600 border-red-200' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+            診察回数: {userMessageCount}/{MAX_TURNS}
           </div>
-        )}
+        </div>
       </header>
 
       {/* Chat Area */}
@@ -224,89 +231,115 @@ const App: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Limit Reached Notification */}
+        {isLimitReached && (
+          <div className="flex justify-center my-4">
+             <div className="bg-slate-800 text-white text-sm px-6 py-3 rounded-full shadow-lg text-center">
+               本日の診察（チャット）は終了しました。<br/>
+               新たなご相談はページを更新してください。
+             </div>
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </main>
 
       {/* Input Area */}
       <footer className="bg-white border-t border-slate-200 p-3 md:p-4 sticky bottom-0 z-20">
         
-        {/* Image Preview Area */}
-        {attachedImages.length > 0 && (
-          <div className="flex gap-3 mb-3 px-1 overflow-x-auto pb-2">
-            {attachedImages.map((img, i) => (
-              <div key={i} className="relative group">
-                <img src={img} alt="preview" className="h-20 w-20 object-cover rounded-lg border border-slate-300 shadow-sm" />
+        {isLimitReached ? (
+           // Limit Reached State
+           <div className="max-w-4xl mx-auto flex items-center justify-center">
+              <button 
+                onClick={() => window.location.reload()}
+                className="bg-slate-600 text-white px-6 py-3 rounded-full font-bold shadow-md hover:bg-slate-700 transition-colors flex items-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                新しい診察を始める（リロード）
+              </button>
+           </div>
+        ) : (
+          <>
+            {/* Image Preview Area */}
+            {attachedImages.length > 0 && (
+              <div className="flex gap-3 mb-3 px-1 overflow-x-auto pb-2">
+                {attachedImages.map((img, i) => (
+                  <div key={i} className="relative group">
+                    <img src={img} alt="preview" className="h-20 w-20 object-cover rounded-lg border border-slate-300 shadow-sm" />
+                    <button 
+                      onClick={() => removeImage(i)}
+                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs shadow-md hover:scale-110 transition-transform"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto flex items-end gap-2 md:gap-4">
+              
+              {/* Image Upload Button */}
+              <div className="relative">
+                <input 
+                  type="file" 
+                  ref={fileInputRef}
+                  accept="image/*" 
+                  multiple 
+                  className="hidden" 
+                  onChange={handleImageUpload}
+                  disabled={attachedImages.length >= 2 || status === AppStatus.THINKING}
+                />
                 <button 
-                  onClick={() => removeImage(i)}
-                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs shadow-md hover:scale-110 transition-transform"
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={attachedImages.length >= 2 || status === AppStatus.THINKING}
+                  className={`
+                    p-3 rounded-full transition-colors flex items-center justify-center
+                    ${attachedImages.length >= 2 
+                      ? 'bg-slate-100 text-slate-300 cursor-not-allowed' 
+                      : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-blue-600'}
+                  `}
+                  title="画像を添付 (最大2枚)"
                 >
-                  ✕
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                  {attachedImages.length > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold">
+                      {attachedImages.length}
+                    </span>
+                  )}
                 </button>
               </div>
-            ))}
-          </div>
+
+              {/* Text Input */}
+              <div className="flex-1 bg-slate-100 rounded-2xl flex items-center px-4 py-2 focus-within:ring-2 focus-within:ring-blue-300 transition-shadow">
+                <input 
+                  type="text" 
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  placeholder={status === AppStatus.THINKING ? "AIドクターが考え中..." : "症状や相談内容を入力..."}
+                  className="w-full bg-transparent border-none outline-none text-slate-800 placeholder-slate-400 py-2 disabled:opacity-50"
+                  disabled={status === AppStatus.THINKING}
+                />
+              </div>
+
+              {/* Send Button */}
+              <button 
+                type="submit"
+                disabled={(!inputText.trim() && attachedImages.length === 0) || status === AppStatus.THINKING}
+                className={`
+                  p-3 rounded-full shadow-lg transition-all transform active:scale-95 flex items-center justify-center
+                  ${(!inputText.trim() && attachedImages.length === 0) || status === AppStatus.THINKING 
+                    ? 'bg-slate-300 text-white cursor-not-allowed' 
+                    : 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-blue-200'}
+                `}
+              >
+                <svg className="w-5 h-5 translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+              </button>
+            </form>
+          </>
         )}
-
-        <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto flex items-end gap-2 md:gap-4">
-          
-          {/* Image Upload Button */}
-          <div className="relative">
-            <input 
-              type="file" 
-              ref={fileInputRef}
-              accept="image/*" 
-              multiple 
-              className="hidden" 
-              onChange={handleImageUpload}
-              disabled={attachedImages.length >= 2 || status === AppStatus.THINKING}
-            />
-            <button 
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={attachedImages.length >= 2 || status === AppStatus.THINKING}
-              className={`
-                p-3 rounded-full transition-colors flex items-center justify-center
-                ${attachedImages.length >= 2 
-                  ? 'bg-slate-100 text-slate-300 cursor-not-allowed' 
-                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-blue-600'}
-              `}
-              title="画像を添付 (最大2枚)"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-              {attachedImages.length > 0 && (
-                <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold">
-                  {attachedImages.length}
-                </span>
-              )}
-            </button>
-          </div>
-
-          {/* Text Input */}
-          <div className="flex-1 bg-slate-100 rounded-2xl flex items-center px-4 py-2 focus-within:ring-2 focus-within:ring-blue-300 transition-shadow">
-            <input 
-              type="text" 
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              placeholder={status === AppStatus.THINKING ? "AIドクターが考え中..." : "症状や相談内容を入力..."}
-              className="w-full bg-transparent border-none outline-none text-slate-800 placeholder-slate-400 py-2 disabled:opacity-50"
-              disabled={status === AppStatus.THINKING}
-            />
-          </div>
-
-          {/* Send Button */}
-          <button 
-            type="submit"
-            disabled={(!inputText.trim() && attachedImages.length === 0) || status === AppStatus.THINKING}
-            className={`
-              p-3 rounded-full shadow-lg transition-all transform active:scale-95 flex items-center justify-center
-              ${(!inputText.trim() && attachedImages.length === 0) || status === AppStatus.THINKING 
-                ? 'bg-slate-300 text-white cursor-not-allowed' 
-                : 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-blue-200'}
-            `}
-          >
-            <svg className="w-5 h-5 translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
-          </button>
-        </form>
         <div className="text-center mt-2">
            <p className="text-[10px] text-slate-400">※AIの回答は参考情報です。医療機関の受診に代わるものではありません。</p>
         </div>
