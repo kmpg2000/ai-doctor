@@ -1,0 +1,7 @@
+{
+  "name": "AI 総合病院",
+  "description": "あなたの健康をサポートするAIドクターチャット",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
